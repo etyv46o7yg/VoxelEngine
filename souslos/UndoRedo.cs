@@ -1,4 +1,6 @@
-﻿using System.Collections;
+﻿using Render;
+using System;
+using System.Collections;
 using System.Collections.Generic;
 using System.Linq;
 using UnityEngine;
@@ -13,6 +15,27 @@ public class UndoRedo<T>
         {
         listState = new List<T>();
         maxIteration = _maxIteration;
+        }
+
+    public float GetSizeMegaByte()
+        {
+        float res = 0.0f;     
+
+        if ( typeof(T) ==  typeof( PieceDeMonde ) )
+            {
+            res = 0.0f;
+            foreach (var item in listState)
+                {
+                res += (item as PieceDeMonde).GetSizeInMegaByte();
+                }
+            }
+
+        else
+            {
+            throw new Exception("Тип Т не поддерживает размер объекта");
+            }
+
+        return res;
         }
 
     public void AddAction(T action)
@@ -66,8 +89,7 @@ public class UndoRedo<T>
 
         else
             {
-            Debug.Log("возврат пустого");
-            return default(T);
+            throw new Exception("Система отката пуста. Нет предыдущего элемента.");
             }
         }
 

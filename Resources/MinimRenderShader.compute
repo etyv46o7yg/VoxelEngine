@@ -264,10 +264,10 @@ void Load(uint3 id : SV_DispatchThreadID)
     mondeTex[id.xyz] = buffSave[pos];
     }
 
-[numthreads(16, 1, 1)]
+[numthreads(32, 32, 1)]
 void Sauver_Piece(uint3 id : SV_DispatchThreadID)
     { 
-    int count =  id.x; //Transform3Dto1D(id, int3(targ_3)); //
+    int count = id.x * 32 + id.y; //id.x; //Transform3Dto1D(id, int3(targ_3)); 
     int3 pos3d = Transform1Dto3D(count, int3(targ_4));
     //mondeTex[pos3d.xzy + targ_3.xzy] = float4(1, 1, 0, 1);    
     ColorSavePiece col;
@@ -325,10 +325,10 @@ void Sauver_Piece(uint3 id : SV_DispatchThreadID)
     }
 */
 
-[numthreads(16, 1, 1)]
+[numthreads(32, 32, 1)]
 void Load_Piece(uint3 id : SV_DispatchThreadID)
     {
-    int count = id.x;
+    int count = id.x * 32 + id.y;
     ColorSavePiece col = buffSaveLoadPiece[count];
     int3 worldPos = Transform1Dto3D(col._pos, int3(255, 255, 255));
     mondeTex[worldPos] = col._color;

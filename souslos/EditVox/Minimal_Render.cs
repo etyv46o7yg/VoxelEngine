@@ -351,8 +351,8 @@ namespace Render
             var buff = ChaderSysteme.GetComputeBuffer<ColorSavePiece>(_monde.colors.Length );
             buff.SetData(_monde.colors);
             chader.SetBufferPourToutKernels(buff, "buffSaveLoadPiece");
-            int countKernN = buff.count / 16 + 1;
-            chader.Dispatch("LoadP", countKernN, 1, 1);                    
+            int countKernX = buff.count / (1024) + 1;
+            chader.Dispatch("LoadP", countKernX, 2, 1);                    
 
             buff.Release();
             }
@@ -415,9 +415,10 @@ namespace Render
             var buff = ChaderSysteme.GetComputeBuffer<ColorSavePiece>(recirculeDelta.Mult());
             chader.SetBufferPourToutKernels(buff, "buffSaveLoadPiece");
 
-            int  countKernN = buff.count / 16 +1;
+            int countKernX = buff.count / (1024 ) +1;
+            int countKernY = buff.count / countKernX;
 
-            chader.Dispatch("SaveP", countKernN, 1, 1 );
+            chader.Dispatch("SaveP", countKernX, 2, 1 );
 
             ColorSavePiece[] res = new ColorSavePiece[recirculeDelta.Mult()];
             buff.GetData(res);
