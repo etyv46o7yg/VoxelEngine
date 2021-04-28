@@ -1,0 +1,1064 @@
+﻿// Each #kernel tells which function to compile; you can have many kernels
+#pragma kernel CSMain
+#pragma kernel Clear
+#pragma kernel Experemental
+#pragma kernel Changement
+#pragma kernel Blitz
+#pragma kernel Lumiere
+#pragma kernel Soleil
+#pragma kernel BlitzLum
+#pragma kernel BlooreH
+#pragma kernel BlooreV
+#pragma kernel Multiplie
+#pragma kernel Lumiere_2
+#pragma kernel AddEntite
+#pragma kernel Fillimon
+
+// Create a RenderTexture with enableRandomWrite flag and set it
+// with cs.SetTexture
+//Texture3D<float4>   Input;
+struct SourseDeLum
+    {
+    float3 pos;
+    float3 color;
+    float  intensivity;
+    };
+
+struct RefBuffer
+    {
+    int pos;
+    };
+
+struct Particule
+    {
+    int posX;
+    int posY;
+    int posZ;
+    int colorX;
+    int colorY;
+    int colorZ;
+    int colorA;
+    float mass;
+    int refVoxel;
+    //-------------
+    int3 vitX;
+    int3 subPos;
+    //int    vitY;
+    //int    vitZ;   
+    
+    int GetIntPos(int3 dim = int3(256, 256, 256) )
+        {
+        int3 id = int3(posX, posY, posZ);
+        
+        if (id.x < 0 || id.x > dim.x)
+            {
+            return -1;
+            }
+    
+        if (id.y < 0 || id.y > dim.y)
+            {
+            return -1;
+            }
+    
+        if (id.z < 0 || id.z > dim.z)
+            {
+            return -1;
+            }
+    
+        int i = id.z * dim.x * dim.y + id.y * dim.y + id.x;
+        return i;
+        }
+    int3 GetInt3Pos()
+        {
+        int3 res = int3(posX, posY, posZ);
+        return res;
+        }
+    
+    int3 GetVite()
+        {
+        //return int3(vitX, vitY, vitZ);
+        return int3(vitX);
+        }
+    
+    void SetVite(int3 _move)
+        {
+        vitX = _move;     
+        }
+    
+    void AddVite(int3 _vite)
+        {
+        vitX += _vite;
+        vitX = clamp( vitX, int3(-15, -15, -15), int3(15, 15, 15) );
+        }
+    
+    float4 GetColor()
+        {
+        const float koeff = 0.00390625f;
+        return float4(colorX * koeff, colorY * koeff, colorZ * koeff, colorA * koeff);
+        }
+    
+    void SetColor(float4 color)
+        {
+        const float koeff = 256.0f;
+        colorX = color.r * koeff;
+        colorY = color.g * koeff;
+        colorZ = color.b * koeff;
+        colorA = color.a * koeff;
+        }
+    
+    void Move(int3 vec)
+        {       
+        InterlockedAdd(posX, vec.x);
+        InterlockedAdd(posY, vec.y);
+        InterlockedAdd(posZ, vec.z);
+        /*
+        posX += vec.x;
+        posY += vec.y;
+        posZ += vec.z;
+        */
+        }
+    
+    int3 SubMove(int3 vec)
+        {
+        int3 res = int3(0, 0, 0);
+        
+        subPos += vec;
+        
+        if (subPos.x > 8)
+            {
+            subPos.x -= 16;
+            posZ += 1;
+            res += int3(1, 0, 0);
+            }
+        
+        if (subPos.x < -8)
+            {
+            subPos.x += 16;
+            posZ += -1;
+            res += int3(-1, 0, 0);
+            }
+        
+        if (subPos.y > 8)
+            {
+            subPos.y -= 16;
+            posZ += 1;
+            res += int3(0, 1, 0);
+            }
+        
+        if (subPos.y < -8)
+            {
+            subPos.y += 16;
+            posZ += -1;
+            res += int3(0, -1, 0);
+            }
+        
+        if(subPos.z > 8)
+            {
+            subPos.z -= 16;
+            posZ     += 1;
+            res += int3(0, 0, 1);
+            }
+        
+        if (subPos.z < -8)
+            {
+            subPos.z += 16;
+            posZ     += -1;
+            res += int3(0, 0, -1);
+            }
+        
+        return res;
+        }
+    
+    int AvaitVoisine(int3 dir)
+        {               
+        return -1;
+        }
+    };
+
+Texture3D<float4>   Input;
+Texture3D<float4>   Chunck;
+//Texture3D<float4>               Input_1;
+//Texture3D<float4>               Input_2;
+
+RWStructuredBuffer<SourseDeLum> LumSources;
+RWStructuredBuffer<Particule>   Particl;
+RWStructuredBuffer<RefBuffer>   BufferRefVoxel;
+
+Texture2D<float4>    RayMap;
+Texture2D<float4>    SphereMap;
+Texture2D<float4>    Noize;
+
+RWTexture2D<float4>  Result;
+RWTexture2D<float4>  Tempore;
+RWTexture2D<float>   zBuffer;
+RWTexture2D<float4>  worldPosBuffer;
+RWTexture2D<float4>  ombreCard;
+
+RWTexture3D<float4>  worldLum;
+RWTexture3D<float4>  sumLum;
+RWTexture3D<float4>  mondeInput;
+RWTexture3D<float4>  mondeNorm;
+
+float4x4             cameraTrasform;
+const int            size = 512;
+//длинна, ширина, высота
+float4               dim;
+
+float3 camPos, viewDIr;
+float3 vecNorm;
+float4 cielColor = float4(0.2f, 0.2f, 1, 1);
+float h, h2, h3, h4, h5, kX;
+float4 chunckBias, tempColor;
+int    numeroLumSousre;
+
+    
+float posMult = 8.0f; //коэффициент позиции. Реальное положение делится на 8
+float posMultRev = 0.125f;
+
+float4   StepMarch(float3 startPoint, float3 endPoint, out float zVal, out float3 worldPos);
+float4   StepMarch2 (float3 B);
+float4   StepMarch3(float3 startPoint, float3 endPoint, out float zVal, out float3 worldPos);
+float3x3 AngleAxis3x3(float angle, float3 axis);
+float3   TransformRayDir(float3 pos);
+float3   TransformRayRev(float3 pos);
+void     DrawQuad(int2 pos, int size, float3 color);
+int      Transform3Dto1D(int3 id, int3 dim);
+int3     Transform1Dto3D(int pos, int3 dim);
+float4   MultRGBcanal(float4 col, float f);
+int3     Extrimosa(float3 vect);
+int3     GetInt3FromFloat4(float4 val);
+float3   RoundFloat3(float3 val);
+float3   GetNormal(int3 worldPos);
+int2     Transform3Dto2D(int3 pos, int3 dim3, int2 dim2);
+float    distLine(float3 targ, float3 _point, float3 _pointLine);
+void     MoveVoxel(int3 pos, float3 target, float vitesse);
+float4   GetColorFromParticle (Particule part);
+int3     GetPosFromParticle   (Particule part);
+int      GetIntPosFromParticle(Particule part);
+float3   LimitedAdd(float3 a, float3 b);
+int      AvaitVoisine(Particule courrVox, int3 dir);
+
+[numthreads(32, 32,1)]
+void CSMain (uint3 id : SV_DispatchThreadID)
+    {
+    const float wigt = 256.0f;
+    const float higt = 256.0f;
+    const float koeff = h;                
+    float3 startPos = camPos;  
+    //viewDIr = float3(0, 0, 1);
+    const int size = 512;
+    
+    //float3 rotVec = mul(viewDIr, matX); //    +startPos;
+    //rotVec = mul(rotVec, matY_2);
+    float3 rayDir = TransformRayDir(RayMap[id.xy].rgb );
+    
+    float3 end = startPos + rayDir;
+    
+    float z = 0.0f;
+    float3 worldPos = float3(1, 0, 0);   
+    
+    float4 res = StepMarch3(startPos, end, z, worldPos );
+    Result[id.xy] = res;
+    zBuffer[id.xy] = z;
+    worldPosBuffer[id.xy] = float4(worldPos, 1);
+    }
+
+[numthreads(8, 8, 8)]
+void Clear(uint3 id : SV_DispatchThreadID)
+    {
+    worldLum  [id.xyz] = float4(0.0f, 0.0f, 0.0f, mondeInput[id.xyz].a);
+    sumLum    [id.xyz] = float4(0.0f, 0.0f, 0.0f, 0.0f);
+    mondeInput[id.xyz] = float4(1.0f, 1.0f, 1.0f, 0.003f);    
+    mondeNorm [id.xyz] = float4(GetNormal(id.xyz), 0);
+    
+    int pos = Transform3Dto1D(id.xyz, round(dim.rgb));
+    Particl[pos].refVoxel = -1;    
+    }
+
+[numthreads(8, 8, 8)]
+void Experemental(uint3 id : SV_DispatchThreadID)
+    {
+    half csvf;
+    int3 posCube = int3(150, 150, 150), sizeCub = int3(50, 50, 50);
+    int3 pos_2_cube = posCube + sizeCub;
+    
+    mondeInput[id.xyz] = Input.Load(int4(id.xyz, 0));
+          
+    if ( id.x < pos_2_cube.x && id.x > posCube.x &&      id.y < pos_2_cube.y && id.y > posCube.y &&        id.z < pos_2_cube.z && id.z > posCube.z )
+        { 
+        //int3 essaiMove = float3(0, 0, -1);        
+        mondeInput[id.xyz] = float4((id.x - posCube.x) / (float) sizeCub.x, (id.y - posCube.y) / (float) sizeCub.y, (id.z - posCube.z) / (float) sizeCub.z, 0.04f);
+        } 
+    
+    float4 courrColor = mondeInput[id.xyz];    
+    
+    int pos = Transform3Dto1D(id.xyz, round(dim.rgb));
+    
+    Particl[pos].colorX = courrColor.x * 256;
+    Particl[pos].colorY = courrColor.y * 256;
+    Particl[pos].colorZ = courrColor.z * 256;
+    Particl[pos].colorA = courrColor.a * 256;
+    Particl[pos].posX = id.x;
+    Particl[pos].posY = id.y;
+    Particl[pos].posZ = id.z;
+    Particl[pos].mass = courrColor.a;
+    Particl[pos].refVoxel = -1;   
+    Particl[pos].SetVite(int3(0, 0, 0));
+    
+    if(Particl[pos].colorA < 1)
+        {
+        Particl[pos].refVoxel = -1;
+        }
+    else
+        {
+        Particl[pos].refVoxel = 1;
+        }
+    
+    BufferRefVoxel[pos].pos = pos;
+    }
+
+[numthreads(8, 8, 8)]
+void Changement(uint3 id : SV_DispatchThreadID)
+    {
+    int3  dimInt = round(dim.rgb);       
+    
+    int pos = Transform3Dto1D( int3(id.x, id.y, id.z) , round(dim.rgb));    
+    
+    int3 dir = int3(0, 0, -1);
+    //dir = Particl[pos].GetVite();    
+    Particule courrVox  = Particl[pos];   
+    Particule videPart;
+    videPart.SetColor( float4(1, 1, 1, 0.0f) );
+    videPart.posX = id.x;
+    videPart.posY = id.y;
+    videPart.posZ = id.z;
+    videPart.mass = 0;
+    videPart.refVoxel = 0;
+    videPart.SetVite(int3(0, 0, 0));
+    videPart.subPos = int3(0, 0, 0);
+    //colorBas.a < 0.01f && colorCourr.a > 0.2f && posCourrVox.z > 1   mondeInput[posBasVox].a
+    //Particl[pos].AddVite(int3(0, 0, -1));
+    //Particl[pos].Move(Particl[pos].GetVite());
+    //InterlockedAdd(Particl[pos].vitX.x, 1);
+    int intPosBasVox = AvaitVoisine(courrVox, dir);
+    Particule basVox = Particl[intPosBasVox];
+    int3 posCourrVox = courrVox.GetInt3Pos();
+    float4 courrColor = courrVox.GetColor();
+    
+    //Particl[pos].SetVite(int3(0, 0, -3 * h2));
+    bool estPossibleMove = basVox.GetColor().a < 0.03f || (basVox.GetColor().a > 0.03f && basVox.subPos.z < h2) || true;
+    //basVox.GetColor().a < 0.03f
+    
+    if (estPossibleMove && posCourrVox.z > 1 && courrColor.a > 0.03f)
+        {
+        //Particl[pos].SetVite( dir );
+        Particl[pos].Move( int3(0, 0, -1) );
+        int3 res;// = Particl[pos].SubMove(Particl[pos].GetVite());
+        /*
+        if ( res.z < 0)
+            {        
+            Particule p1 = Particl[pos];
+            Particl[pos] = videPart;
+            Particl[intPosBasVox] = p1;
+            }
+        */  
+        
+        //Particl[pos].Move(int3(0, 0, -1));
+        /*
+        Particule p1 = Particl[pos];        
+        Particl[pos] = videPart;
+        Particl[intPosBasVox] = p1;
+        */
+        }
+    else
+        {
+        //если есть коллизиия
+        if (courrColor.a > 0.03f && basVox.GetColor().a > 0.035f)
+            {
+            //int3 courrVite = Particl[pos].GetVite();
+            //Particl[pos].SetVite(courrVite / 2);
+            //Particl[intPosBasVox].AddVite(courrVite / 2);
+            }
+        //Particl[pos].SetVite(int3(0, 0, 0));
+        }
+
+    }   
+
+[numthreads(8, 8, 8)]
+void Blitz(uint3 id : SV_DispatchThreadID)
+    {    
+    
+    int pos = Transform3Dto1D(id.xyz, round(dim.rgb));
+    Particule part = Particl[pos];
+    mondeInput[id.xyz] = float4(1, 1, 1, 0.0f);
+    
+    int pos_2 = part.GetIntPos();
+    Particl[pos].refVoxel = 1;
+    //mondeInput[part.GetInt3Pos()] = float4(Particl[pos].GetInt3Pos() / 256.0f, part.GetColor().a);
+    
+    if (part.GetColor().a > 0.01f)
+        {    
+        mondeInput[part.GetInt3Pos()    ] = Particl[pos].GetColor();
+        BufferRefVoxel[part.GetIntPos() ].pos = pos;
+        Particl[pos].refVoxel = 1;
+        //Particl[pos_2].refVoxel = 1;
+        }   
+    else
+        {
+        Particl[pos].refVoxel = -1;
+        }
+    //refPartTex[id.xyz] = pos;
+    }
+
+[numthreads(32, 32, 1)]
+void Lumiere(uint3 id : SV_DispatchThreadID)
+    {
+    
+    const int biasRayTarg = 128;
+    float3 arrBias [6] = { float3(0, 128, 0  ), float3(0, -128, 0),  float3(128, 0, 0),   float3(-128, 0, 0),  float3(0, 0, 128),   float3(0, 0, -128)  };
+    float3 arrBias2[6] = { float3(128, 0, 128), float3(128, 0, 128), float3(0, 128, 128), float3(0, 128, 128), float3(128, 128, 0), float3(128, 128, 0) };
+    
+    float3 ordre = float3(0, 0, 0);    
+    
+    if (id.z == 0 || id.z == 1)
+        {
+        ordre = float3(id.x, 0, id.y);
+        }
+    if (id.z == 2 || id.z == 3)
+        {
+        ordre = float3(0, id.x, id.y);
+        }
+    if (id.z == 4 || id.z == 5)
+        {
+        ordre = float3(id.x, id.y, 0);
+        }
+    
+    
+    float3 posL = LumSources[numeroLumSousre].pos.rbg;
+    float4 tone = float4(LumSources[numeroLumSousre].color, 1);
+    
+    float3 basis        = posL  - arrBias [id.z ];
+    float3 originCorner = basis - arrBias2[id.z ];
+    float3 targ = originCorner + ordre + float3(-1, -1 , 1);
+    float3 rayDir = normalize(targ - posL);          
+    float3 colorTrans;
+    float4 totalLumiereColor, courrColor, prevColor;
+    
+    //rayDir = TransformRayDir(SphereMap[id.xy * h].rbg);
+    //rayDir = normalize(rayDir);
+    
+    float intens = 1.0f * LumSources[numeroLumSousre].intensivity;
+    float totalDistanse = 300; //    distance(posL, targ);
+      
+    int3 diment = round(dim.rgb);        
+    
+    for (float count = 0; count < totalDistanse; count += 1.0f)
+        {        
+        float3 courrPos = posL + rayDir * count;        
+        float3 vecNorm = GetNormal(courrPos);
+        //courrPos = clamp(courrPos, float3(1, 1, 1), float3(255, 255, 255));
+        
+        float3 prevPos = posL + rayDir * count + rayDir * (10.0f - h * 3);
+        //courrColor = Input.Load(int4(floor(courrPos), 0));
+        courrColor = mondeInput[ courrPos ];               
+        prevColor  = mondeInput[prevPos ];
+        
+        //float3 normal = normalize( GetNormal(int3(floor(prevPos))) * float3(-1, -1, 1) );
+        //float normKoeff = pow(saturate(dot(normal, rayDir)), h4);
+        
+        intens *= (1 - prevColor.a);
+        tone = lerp(tone, tone * courrColor, mondeInput[courrPos].a);
+        
+        //totalLumiereColor = float4(tone.rgb * courrVoxel.rgb * intens * koeff * normKoeff, courrVoxel.a);                                            
+        worldLum[courrPos] = float4(tone.rgb * courrColor.rgb * intens, courrColor.a);
+        //worldLum[courrPos] = float4( normal, courrColor.a );
+        }
+
+    }
+
+[numthreads(8, 8, 8)]
+void Lumiere_2(uint3 id : SV_DispatchThreadID)
+    {
+    float3 worldPos      = float3(id.xyz);
+    float3 posL          = viewDIr.xzy;
+    float3 rayDir        = normalize(worldPos - posL);
+    float  totalDistanse = distance(posL, worldPos);
+    float3 colorTrans;
+    float4 tone = float4(LumSources[0].color, 1);    
+    float4 totalLumiereColor, courrColor;
+    float  intens        = 1.0f;    
+    float4 courrVoxel;   
+    //courrVoxel    = Input.Load(int4(floor(worldPos), 0)   );
+    courrVoxel = mondeInput[worldPos];
+    
+    float3 normal = normalize(GetNormal(int3(floor(worldPos))) * float3(-1, -1, 1));
+    float normKoeff = pow(saturate(dot(normal, rayDir)), h4);
+    
+    if(courrVoxel.a < 0.8f)
+        {                 
+        normKoeff = 1;
+        }
+    
+    float koeff = saturate(pow(100 * h2 / totalDistanse, 2.0f));
+    
+    if (totalDistanse > 200.0f)
+        {
+        worldLum[id.xyz] = float4(0, 0, 0, courrVoxel.a);
+        return;
+        }
+    
+    for (float count = 0; count < totalDistanse - 3.5f; count += 1.0f)
+        {       
+        float3 courrPos = posL + rayDir * count;
+        //courrColor = Input.Load(int4(floor(courrPos), 0));
+        courrColor = mondeInput[courrPos];
+        intens *= (1 - courrColor.a );
+        tone = lerp(tone, courrColor, courrColor.a);
+        //totalLumiereColor = float4(tone.rgb * courrVoxel.rgb * intens * koeff * normKoeff, courrVoxel.a);                       
+        if(intens < 0.01f)
+            {
+            totalLumiereColor = float4(tone.rgb * courrVoxel.rgb * intens * koeff * normKoeff, courrVoxel.a);
+            worldLum[id.xyz] = totalLumiereColor;
+            return;
+            }
+        } 
+    
+    totalLumiereColor = float4(tone.rgb * courrVoxel.rgb * intens * koeff * normKoeff, courrVoxel.a);
+    worldLum[id.xyz] = totalLumiereColor;
+    }
+
+[numthreads(16, 16, 1)]
+void Soleil(uint3 id : SV_DispatchThreadID)
+    {        
+    float3 posL = int3(id.xy, 256);
+    float3 rayDir = normalize(viewDIr.xzy);
+    float4 tone = float4(LumSources[0].color, 1);
+    float3 colorTrans;
+    float4 totalLumiereColor, courrColor, prevColor;
+    
+    //rayDir = TransformRayDir(SphereMap[id.xy * h].rbg);
+    //rayDir = normalize(rayDir);
+    
+    float intens = 1.0f * LumSources[0].intensivity;
+    float totalDistanse = 256; //    distance(posL, targ);
+      
+    int3 diment = round(dim.rgb);
+    
+    for (float count = 0; count < totalDistanse; count += 1.0f)
+        {
+        float3 courrPos = posL + rayDir * count;
+        
+        //courrPos = clamp(courrPos, float3(1, 1, 1), float3(255, 255, 255));
+        
+        float3 prevPos = posL + rayDir * count + 1.35f;
+        //courrColor = Input.Load(int4(floor(courrPos), 0));
+        courrColor = mondeInput[courrPos];
+        
+        prevColor = mondeInput[prevPos];
+        intens *= (1 - prevColor.a);
+        tone = lerp(tone, courrColor, courrColor.a);
+        //totalLumiereColor = float4(tone.rgb * courrVoxel.rgb * intens * koeff * normKoeff, courrVoxel.a);                       
+        totalLumiereColor = float4(tone.rgb * courrColor.rgb * intens, courrColor.a);
+        worldLum[courrPos] = totalLumiereColor;
+        //worldLum[courrPos + float3(1, 0, 0)] = totalLumiereColor;
+        //worldLum[courrPos + float3(0, 1, 0)] = totalLumiereColor;
+        //worldLum[courrPos + float3(0, 0, 1)] = totalLumiereColor;
+        }
+    }
+
+[numthreads(8, 8, 8)]
+void BlitzLum(uint3 id : SV_DispatchThreadID)
+    {
+    sumLum[id] += worldLum[id];
+    }
+
+[numthreads(32, 32, 1)]
+void Multiplie(uint3 id : SV_DispatchThreadID)
+    {
+    cielColor = float4(0.2, 0.2, 1, 1);
+    const float4 colorAmbient = float4(0.12, 0.12, 0.12, 1);       
+    
+    float4 res = float4(0, 0, 0, 0);
+    float3 rayDir = normalize(TransformRayDir(RayMap[id.xy].rgb));
+    
+    //Result[id.xy] = transLumData[ Transform3Dto1D(int3(id.x, id.y, h4 * 30), GetInt3FromFloat4(dim) ) ];
+    float  x1; 
+    float3 x2;
+    
+    res = StepMarch(camPos, camPos + rayDir, x1, x2);    
+    
+    Result[id.xy] = float4(res.rgb, 1);   
+    }
+
+[numthreads(8, 8, 8)]
+void Multiplie_2(uint3 id : SV_DispatchThreadID)
+    {
+    //сделаем ЛОД
+    int3 posLOD = int3(id.x / 2, id.y / 2, id.z / 2);    
+
+    }
+
+[numthreads(8, 8, 8)]
+void AddEntite(uint3 id : SV_DispatchThreadID)
+    {
+    int pos = Transform3Dto1D(id.xyz, round(dim.rgb));
+    Particule part = Particl[pos];
+    int3 courrPos = part.GetInt3Pos();
+    float rCanal = Noize[courrPos.xy].r;
+    
+    
+    if (courrPos.z < 240 && courrPos.z > 230 && courrPos.x > 150 && courrPos.x < 180 && courrPos.y > 160 && courrPos.y < 180)
+        {              
+        Particl[pos].SetColor(float4(0, 1, 0.3f, 0.3f));
+        }      
+    
+    return;
+    
+    /*
+    float3 courrPos = float3(id.xyz + chunckBias.xyz);
+    float4 courrColor = Chunck.Load(int4( id.xyz, 0 ));
+    
+    if(courrColor.a > 0.01f)
+        {
+        mondeInput[courrPos] = courrColor;
+        }
+    */
+    }
+
+[numthreads(8, 8, 8)]
+void Fillimon(uint3 id : SV_DispatchThreadID)
+    {
+    mondeInput[id.xyz] = tempColor;    
+    }
+
+[numthreads(32, 32, 1)]
+void BlooreH(uint3 id : SV_DispatchThreadID)
+    {
+    
+    int radH = kX;
+	
+    int x = id.x;
+    int y = id.y;
+    int2 idN = int2(x, y);
+
+    float4 res = float4(0.0f, 0.0f, 0.0f, 1.0f);
+
+    float scaleTotal = radH + 1.0f;
+
+    int xPos = 1;
+    while (xPos <= radH)
+        {
+        float scale = 1.0f + radH - xPos;
+
+        res += (ombreCard[int2(x + xPos, y)] + ombreCard[int2(x - xPos, y)]) * scale;
+
+        xPos++;
+        }
+
+    res = res / (scaleTotal * scaleTotal);
+    res.a = 1.0f;
+    
+    Tempore[id.xy] = res;
+    }
+
+[numthreads(32, 32, 1)]
+void BlooreV(uint3 id : SV_DispatchThreadID)
+    {   
+    int radH = kX;
+	
+    int x = id.x;
+    int y = id.y;
+    int2 idN = int2(x, y);
+
+    float4 res = float4(0.0f, 0.0f, 0.0f, 1.0f);
+
+    float scaleTotal = radH + 1.0f;
+
+    int xPos = 1;
+    while (xPos <= radH)
+        {
+        float scale = 1.0f + radH - xPos;
+
+        res += (Tempore[int2(x, y + xPos)] + Tempore[int2(x, y- xPos)]) * scale;
+
+        xPos++;
+        }
+
+    res = res / (scaleTotal * scaleTotal);
+    res.a = 1.0f;
+    
+    ombreCard[id.xy] = res;
+    }
+
+
+int Transform3Dto1D(int3 id, int3 dim)
+    {
+    if(id.x < 0 || id.x > dim.x)
+        {
+        return -1;
+        }
+    
+    if (id.y < 0 || id.y > dim.y)
+        {
+        return -1;
+        }
+    
+    if (id.z < 0 || id.z > dim.z)
+        {
+        return -1;
+        }
+    
+    int i = id.z * dim.x * dim.y + id.y * dim.y + id.x;
+    return i;
+    }
+
+int3 Transform1Dto3D(int pos, int3 dim)
+    {
+    int idx = pos;
+    
+    int z = floor( idx / (dim.x * dim.y) );
+    idx -= (z * dim.x * dim.y);
+    int y = floor(idx / dim.x);
+    int x = idx % dim.x;
+    return int3(x, y, z);
+    }
+
+int2 Transform3Dto2D(int3 pos, int3 dim3, int2 dim2)
+    {
+    const int u = 256; // текстура 4098х4098 состоит из кусков 256х256, по 16х16
+    int z = pos.z;
+    int xOffset = z % u;
+    int yOffset = z / u;
+    int2 offset = int2(xOffset, yOffset);
+    
+    int2 res = int2(pos.x + u * xOffset, pos.y + u * yOffset);    
+    return res;
+    }
+
+int3 Transform2Dto3D(int2 pos, int3 dim3, int2 dim2)
+    {
+    const int u = 256; // текстура 4098х4098 состоит из кусков 256х256, по 16х16
+    int3 res = int3(0, 0, 0);
+    
+    int xChounck = pos.x % u;
+    int yChounck = pos.y % u;    
+    
+    return res;
+    }
+
+float3x3 AngleAxis3x3(float angle, float3 axis)
+    {
+    float c, s;
+    sincos(angle, s, c);
+
+    float t = 1 - c;
+    float x = axis.x;
+    float y = axis.y;
+    float z = axis.z;
+
+    return float3x3
+        (
+        t * x * x + c, t * x * y - s * z, t * x * z + s * y,
+        t * x * y + s * z, t * y * y + c, t * y * z - s * x,
+        t * x * z - s * y, t * y * z + s * x, t * z * z + c
+        );
+    }
+
+float4 StepMarch(float3 startPoint, float3 endPoint, out float zVal, out float3 worldPos)
+    {       
+    int   maxSpet = 600;
+    const float maxDistanse = 812.0f;
+    
+    float step = 1.0f;
+    
+    zVal = -1.0f;
+    
+    const float3 dirStep = normalize(startPoint - endPoint) * h5;
+    const float4 fond  = float4(0.8f, 0.1f, 0.1f, 1.0f);
+    const float4 fond2 = float4(0.0f, 0.9f, 0.0f, 1.0f);
+    const float4 fond3 = float4(0.0f, 0.0f, 0.9f, 1.0f);
+    
+    float3 res = float3(0, 0, 1);
+    
+    for (float i = maxSpet; i > 0; i-= 0.9f)
+        {
+        //step *= 1.01f;             
+        float3 courrPos = startPoint + dirStep * i; 
+        float4 courrColor;        
+        
+        courrColor = sumLum[int3(courrPos.xzy)];     
+        //courrColor = mondeInput[int3(courrPos.xzy)];
+        zVal += courrColor.a;
+        res = lerp(res, courrColor.rgb, courrColor.a);            
+        }
+    
+    //zVal = -1.0f;  
+    worldPos = float3(0, 0, 0);
+    return float4(res, 1);
+    }
+
+float4 StepMarch2(float3 endPoint)
+    {
+    const float4 fond = float4(0.8f, 0.1f, 0.1f, 1.0f);
+    const float4 fond2 = float4(0.0f, 0.9f, 0.0f, 1.0f);
+    const float4 fond3 = float4(0.0f, 0.8f, 0.9f, 1.0f);   
+
+    float3 courrPos = endPoint;
+    //intPos = int3(intPos.x % size, intPos.y % size, intPos.z % 32);
+    
+    const float minLim = 0.0f, maxLim = 256.0f;
+    
+    //return float4(courrPos, 1.0);
+    float4 res = float4(0.0f, 0.0f, 0.0f, 1.0f);   
+    
+    bool estCorrectX = courrPos.x < maxLim && courrPos.x > minLim;
+    bool estCorrectY = courrPos.y < maxLim && courrPos.y > minLim;
+    bool estCorrectZ = courrPos.z < maxLim && courrPos.z > minLim;
+    
+    float x, y, z, w;
+    x = courrPos.x;
+    y = courrPos.y;
+    z = courrPos.z;       
+    //float4 courrColor = Input.Load(int4(x, y, z, 0));
+    
+    if (estCorrectX)
+        {
+        res += float4(1.0f, 0.0f, 0.0f, 1.0f);
+        }
+        
+    if (estCorrectY)
+        {
+        res += float4(0.0f, 1.0f, 0.0f, 1.0f);
+        }
+    
+    if (estCorrectZ)
+        {
+        res += float4(0.0f, 0.0f, 1.0f, 1.0f);
+        }
+    
+    if(estCorrectX && estCorrectY && estCorrectZ)
+        {
+        return fond2;
+        }
+    
+    return fond3;
+    }
+
+float4 StepMarch3(float3 startPoint, float3 endPoint, out float zVal, out float3 worldPos)
+    {
+    if (h5 < 0.2f)
+        {
+        h5 = 0.2f;
+        }
+    
+    int maxSpet = 500;
+    const float maxDistanse = 512.0f;
+    
+    float step = 1.0f;
+    
+    zVal = 1.0f;
+    
+    const float3 dirStep = normalize(startPoint - endPoint) * 0.8f;
+    const float4 fond = float4(0.8f, 0.1f, 0.1f, 1.0f);
+    const float4 fond2 = float4(0.0f, 0.9f, 0.0f, 1.0f);
+    const float4 fond3 = float4(0.2f, 0.2f, 1.0f, 1.0f);
+    
+    float transparensia = 1.0f;
+    float3 colorTrans = fond3.rgb;
+    zVal = -1;
+    
+    for (float i = maxSpet; i > 0 ; i--)
+        {
+        //step *= 1.01f;
+        
+        float3 courrPos = startPoint + dirStep * i;
+        
+        
+        //intPos = int3(intPos.x % size, intPos.y % size, intPos.z % 32);
+        float minLim = 0.0f;
+        //return float4(courrPos, 1.0);
+        float h3 = 256.0f;
+        //return fond2;
+        
+        int pos = Transform3Dto1D(int3(courrPos.xzy), GetInt3FromFloat4(dim));
+        
+        float4 courrColor = Input.Load(int4(courrPos.xzy, 0));        
+        
+        colorTrans = lerp(colorTrans, courrColor.rgb, courrColor.a);
+        
+        if (courrColor.a > 0.01f)
+            {
+            float zKoeff = 1.0f - i / maxSpet;
+            zVal = zKoeff;
+
+            worldPos = RoundFloat3(courrPos.xzy);
+            //return courrColor;
+            }
+            
+        }
+    
+    //zVal = -1.0f;
+    //worldPos = float3(0, 0, 0);
+    //return fond3;
+    
+    return float4(colorTrans, 1);
+    }
+
+float3 TransformRayDir(float3 pos)
+    {
+    float3 res = (pos - float3(0.5f, 0.5f, 0.5f)) * 2.0f;
+    return res;
+    }
+
+float3 TransformRayRev(float3 pos)
+    {
+    float3 res = pos / 2.0f + float3(0.5f, 0.5f, 0.5f);
+    return res;
+    }
+
+float4 MultRGBcanal(float4 col, float f)
+    {
+    return float4(col.rgb * f, col.a);
+    }
+
+float4 MinColor(float4 a, float4 b)
+    {
+    return a;
+    }
+
+int3 Extrimosa(float3 inputRay)
+    {
+    /*
+    float3 vect = abs(inputRay);   
+    int3 res = int3(0, 0, 0);
+    
+    if(vect.r > vect.g && vect.r > vect.b)
+        {
+        res = int3(1, 0, 0) * sign(inputRay.r);
+        return -res;
+    }
+    
+    if (vect.g > vect.r && vect.g > vect.b)
+        {
+        res = int3(0, 1, 0) * sign(inputRay.g);
+        return -res;
+        }
+    
+    if (vect.b > vect.g && vect.b > vect.r)
+        {
+        res = int3(0, 0, 1) * sign(inputRay.b);
+        return -res;
+        }
+    */
+    
+    return int3(0, 0, 0);
+    }
+
+int3 GetInt3FromFloat4(float4 val)
+    {
+    int3 res = int3(round(val.r), round(val.g), round(val.b) );    
+    return res;
+    }
+
+float3 RoundFloat3(float3 val)
+    {
+    float3 res = float3(ceil(val.r) - 0.5f, ceil(val.g) - 0.5f, ceil(val.b) - 0.5f);
+    return res;
+    }
+
+float3 GetNormal(int3 worldPos)
+    {
+    int3 LeftIntPos = worldPos;
+            
+    float3 norm = float3(0, 0, 0);
+    float  porog = 0.05f;
+            
+    if (mondeInput[LeftIntPos + int3(1, 0, 0)].a < porog)
+        {
+        norm += float3(1, 0, 0);
+        }
+            
+    if (mondeInput[LeftIntPos - int3(1, 0, 0)].a < porog)
+        {
+        norm += float3(-1, 0, 0);
+        }
+            
+    if (mondeInput[LeftIntPos + int3(0, 1, 0)].a < porog)
+        {
+        norm += float3(0, 1, 0);
+        }
+            
+    if (mondeInput[LeftIntPos - int3(0, 1, 0)].a < porog)
+        {
+        norm += float3(0, -1, 0);
+        }
+            
+    if (mondeInput[LeftIntPos + int3(0, 0, 1)].a < porog)
+        {
+        norm -= float3(0, 0, 1);
+        }
+            
+    if (mondeInput[LeftIntPos - int3(0, 0, 1)].a < porog)
+        {
+        norm -= float3(0, 0, -1);
+        }
+            
+    norm = normalize(norm);
+    //norm = norm * 0.5f + (0.5f, 0.5f, 0.5f);
+    return norm;
+    }
+
+float distLine(float3 targ, float3 _point, float3 _pointLine)
+    {
+    float res_1 = length(cross(_point, _pointLine));
+    return res_1 / length(targ);
+    }
+
+void MoveVoxel(int3 pos, float3 target, float vitesse)
+    {
+    mondeInput[pos].a          -= vitesse;
+    mondeInput[pos + target].a += vitesse;
+    }
+
+float4 GetColorFromParticle(Particule part)
+    {
+    float r = (float) part.colorX / 256.0f;
+    float g = (float) part.colorY / 256.0f;
+    float b = (float) part.colorZ / 256.0f;
+    float a = (float) part.colorA / 256.0f;
+    return float4(r, g, b, a);
+    }
+
+int3 GetPosFromParticle(Particule part)
+    {
+    int x = part.posX;
+    int y = part.posY;
+    int z = part.posZ;    
+    return int3(x, y, z);
+    }
+
+int GetIntPosFromParticle(Particule part)
+    {
+    int res = Transform3Dto1D(GetPosFromParticle(part), round(dim.rgb));
+    return res;
+    }
+
+float3 LimitedAdd(float3 a, float3 b)
+    {
+    float3 res = a + b;
+    
+    float maximum = max(res.r, max(res.g, res.b) );
+    maximum = max(1.0f, maximum);
+    res = res / maximum;
+    return res;
+    }
+
+int AvaitVoisine(Particule courrVox, int3 dir)
+    {
+    int3 dimInt = int3(256, 256, 256);    
+    int3 posCourrVox = courrVox.GetInt3Pos();
+    int3 posBasVox = posCourrVox + dir;
+    int intPosBasVox = Transform3Dto1D(posBasVox, dimInt);
+    int res = BufferRefVoxel[intPosBasVox].pos;
+    return res;
+    }

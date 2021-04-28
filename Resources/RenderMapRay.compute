@@ -1,0 +1,45 @@
+﻿// Each #kernel tells which function to compile; you can have many kernels
+#pragma kernel CSMain
+
+// Create a RenderTexture with enableRandomWrite flag and set it
+// with cs.SetTexture
+RWTexture2D<float4> Result;
+
+float h;
+
+[numthreads(32, 32, 1)]
+void CSMain (uint3 id : SV_DispatchThreadID)
+    {
+    // TODO: insert actual code here!
+    const int size = 2048;
+    const int senter = 0;
+    
+    const float3 vecPrig = float3(0, 0, 1);
+    float angleX = (size - id.x) * h / 100;
+    float angleY = (size - id.y) * h / 100;
+    float sinX = sin(angleX);
+    float cosX = cos(angleX);
+    float sinY = sin(angleY);
+    float cosY = cos(angleY);
+    
+    
+    float3x3 matxX = float3x3(
+                             float3(1.0f, 0.0f, 0.0f ),
+                             float3(0.0f, cosX, -sinX),
+                             float3(0.0f, sinX, cosX )
+                             );
+    
+    float3x3 matxY = float3x3(
+                             float3(cosY, 0.0f, sinY ),
+                             float3(0.0f, 1.0f, 0.0f ),
+                             float3(-sinY, 0.0f, cosY)
+                             );
+    
+    float3 resVec = mul(vecPrig, matxX);
+    resVec = mul(resVec, matxY);
+    
+    resVec = resVec * 0.5f + float3(0.5f, 0.5f, 0.5f);
+   
+    
+    Result[id.xy] = float4(resVec, 1.0f);
+    }

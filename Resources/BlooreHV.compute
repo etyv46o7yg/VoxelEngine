@@ -1,0 +1,51 @@
+﻿// Each #kernel tells which function to compile; you can have many kernels
+#pragma kernel BlureH
+
+// Create a RenderTexture with enableRandomWrite flag and set it
+RWTexture2D<float4> Input;
+RWTexture2D<float4> Out;
+int radH;
+int radV;
+
+float gauss(float x, float sigma);
+
+//работает, пишет во временную текстуру
+[numthreads(32,18,1)]
+void BlureH (uint3 id : SV_DispatchThreadID)
+	{
+    radH = 10;
+	
+	int x = id.x;
+	int y = id.y;
+	int2 idN = int2(x, y);
+
+	float4 res = float4(0.0f, 0.0f, 0.0f, 1.0f);
+
+	float scaleTotal = radH + 1.0f;
+
+	int xPos = 0;
+	while (xPos < radH)
+		{
+		float scale = 1.0f + radH - xPos;
+
+		res += (Input[int2(x + xPos, y)] + Input[int2(x - xPos, y)]) * scale;
+
+		xPos++;
+		}
+
+	res = res / scaleTotal / scaleTotal;
+	res.a = 1.0f;
+
+	Out[idN] = res;
+	}
+
+float gauss(float x, float sigma)
+	{
+	float x_sqr = x * x;
+	float sigma_sqr = sigma * sigma;
+	float sqrt_value = 1.0 / sqrt(2.0 * 3.14 * sigma_sqr);
+	float exp_value = exp(-x_sqr / (2.0 * sigma_sqr));
+	return sqrt_value * exp_value;
+	}
+
+
