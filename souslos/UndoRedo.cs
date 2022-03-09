@@ -93,6 +93,11 @@ public class UndoRedo<T>
             }
         }
 
+    public T Redo()
+        {
+        return listState[0];
+        }
+
     public class IntedArray
         {
         public int numero;

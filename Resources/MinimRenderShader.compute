@@ -14,6 +14,8 @@
 #pragma kernel Load
 #pragma kernel Sauver_Piece
 #pragma kernel Load_Piece
+#pragma kernel MinMain
+#pragma kernel MoyenMain
 
 struct LOD
     {
@@ -53,21 +55,21 @@ RWStructuredBuffer<float4>         buffSave;
 RWStructuredBuffer<ColorSavePiece> buffSaveLoadPiece;
 RWStructuredBuffer<GeneralInfo>    genInfo;
 
-float3 camPos, viewDIr, targ_0, targ_1, targ_2, targ_3, targ_4;
+float3 camPos, viewDIr, targ_0, targ_1, targ_2, targ_3, targ_4, vectorDirPaint;
 float3 posTarget;
 float4 colorPaint;
 float4 bias_1;
 float4 ombreColor;
 float3 sizeChuck;
 int    sizeBuffer;
-
-float rad_1, durete, k_1, k_2, k_3, k_4, k_5, layerA, layerB;
+float rad_1, durete, k_1, k_2, k_3, k_4, k_5, layerA, layerB, lumIntens;
 
 bool estAdd;
 
 float4 StepMarch3(float3 startPoint, float3 dir_1, float3 dir_2, out float zVal, out float3 worldPos);
+float4 StepSimple(float3 startPoint, float3 dir_1, float3 dir_2);
+float4 StepMoyen(float3 startPoint, float3 dir_1, float3 dir_2);
 float4 LumMarch(float3 startPoint, float3 dir_1, float3 dir_2, float k);
-
 float3 TransformRayDir(float3 pos);
 float3 DetectVoxelOnRay(float3 startPoint, float3 dir);
 bool   estCorrectIndex(float3 _val, float3 _max);
@@ -78,8 +80,7 @@ float3 GetNormal      (int3 worldPos);
 
 [numthreads(32,32,1)]
 void CSMain (uint3 id : SV_DispatchThreadID)
-    {
-    
+    {   
     //return;
     // TODO: insert actual code here!
     float3 rayDir   = tex_1[id.xy].rgb;
@@ -112,6 +113,63 @@ void CSMain (uint3 id : SV_DispatchThreadID)
         }
     }
 
+
+[numthreads(32, 32, 1)]
+void MinMain(uint3 id : SV_DispatchThreadID)
+{
+    //return;
+    // TODO: insert actual code here!
+    float3 rayDir = tex_1[id.xy].rgb;
+    float3 rayDir_2 = TransformRayDir(RayMap[id.xy].rgb);
+    float3 startPos = camPos;
+    
+    float z = 0.0f;
+    float3 worldPos = float3(1, 0, 0);
+    
+    float4 res =  StepSimple(startPos, rayDir, rayDir_2);
+    float3 pos = DetectVoxelOnRay(startPos, rayDir_2) / 256.0f;
+    mondePosTex[int2(id.x, 1024 - id.y)] = float4(pos, 1);
+    
+    if (id.x == 0 && id.y == 0 && id.z == 0)
+        {
+        float3 mousePos = mondePosTex[targ_0.xy].rgb;
+        GeneralInfo gi;
+        gi.posCoursor = float4(mousePos, 0.67f);
+        genInfo[0] = gi;
+        }
+    
+    Result[int2(id.x, 1024 - id.y)] = res;
+    return;
+    }
+
+[numthreads(32, 32, 1)]
+void MoyenMain(uint3 id : SV_DispatchThreadID)
+    {
+    //return;
+    // TODO: insert actual code here!
+    float3 rayDir = tex_1[id.xy].rgb;
+    float3 rayDir_2 = TransformRayDir(RayMap[id.xy].rgb);
+    float3 startPos = camPos;
+    
+    float z = 0.0f;
+    float3 worldPos = float3(1, 0, 0);
+    
+    float4 res = StepMoyen(startPos, rayDir, rayDir_2);
+    float3 pos = DetectVoxelOnRay(startPos, rayDir_2) / 256.0f;
+    mondePosTex[int2(id.x, 1024 - id.y)] = float4(pos, 1);
+    
+    if (id.x == 0 && id.y == 0 && id.z == 0)
+        {
+        float3 mousePos = mondePosTex[targ_0.xy].rgb;
+        GeneralInfo gi;
+        gi.posCoursor = float4(mousePos, 0.67f);
+        genInfo[0] = gi;
+        }
+    
+    Result[int2(id.x, 1024 - id.y)] = res;
+    return;
+    }
+
 [numthreads(8, 8, 8)]
 void Prepare(uint3 id : SV_DispatchThreadID)
     {    
@@ -139,14 +197,35 @@ void PaintLocal(uint3 id : SV_DispatchThreadID)
 [numthreads(8, 8, 8)]
 void PaintGlobal(uint3 id : SV_DispatchThreadID)
     {
+    float3 tarp = vectorDirPaint;
     int3   pos_1 = mondePosTex[targ_0.xy].rbg * 256;
-    int3   pos_2 = pos_1 + int3(0, 0, 10);
-    float3 tarp = float3(0, 0, -1);
+    int3   pos_2 = pos_1 - tarp * 10;
+    
     float3 collidePos;
-    float dist = distance(id.xy, pos_2.xy);
+    float dist = 0.0f;    distance(id.xy, pos_2.xy);
     float revDist = rad_1 - dist;
     
-    if ( dist < rad_1 && id.z == pos_2.z)
+    bool predicatus = false;
+    
+    if (abs(tarp.x) > 0.1f)
+        {
+        predicatus = (id.x == pos_2.x);
+        dist = distance(id.yz, pos_2.yz);
+        }
+    
+    if (abs(tarp.y) > 0.1f)
+        {
+        predicatus = (id.y == pos_2.y);
+        dist = distance(id.xz, pos_2.xz);
+        }
+    
+    if (abs(tarp.z) > 0.1f)
+        {
+        dist = distance(id.xy, pos_2.xy);
+        predicatus = (id.z == pos_2.z);
+        }
+    
+    if ( dist < rad_1 && predicatus)
         {
         for (int i = 0; i < 25; i++)
             {
@@ -255,6 +334,7 @@ void Sauver(uint3 id : SV_DispatchThreadID)
     {
     int pos = Transform3Dto1D(id.xyz, int3(255, 255, 255));
     buffSave[pos] = mondeTex[id.xyz];
+    //mondeTex[id.xyz] = float4(1, 0, 0, 0.01f);
     }
 
 [numthreads(8, 8, 8)]
@@ -390,6 +470,73 @@ float4 StepMarch3(float3 startPoint, float3 dir_1, float3 dir_2, out float zVal,
     return float4(colorTrans.rgb, 1);
     }
 
+float4 StepSimple(float3 startPoint, float3 dir_1, float3 dir_2)
+    {
+    int maxStep = 350;
+    const float maxDistanse = 512.0f;      
+    const float3 dirStep = normalize(dir_2);
+    
+    float transparensia = 1.0f;
+    float3 colorTrans = float3(0.25f, 0.25f, 1);
+    
+    bool isDetect = false;
+    
+    float3 lumColor = float3(1, 1, 1);
+    float3 posLumSouslo = float3(255, 255, 255);
+    float4 courrColor = float4(0, 0, 1, 1);
+    //float3 courrPosLum = 
+    
+    for (float i = 0; i < maxStep; i++)
+        {
+        float3 courrPos = startPoint + dirStep * i;       
+        courrColor = mondeTex[courrPos.xzy];       
+        
+        if (!estCorrectIndex(courrPos.xzy, int3(255, 255, 255)))
+            {
+            courrColor = float4(0, 0, 0, 0);
+            }
+        
+        if(courrColor.a > 0.01f)
+            {
+            return float4(courrColor.rgb * (1 - i/maxStep), 1);
+            }
+        }
+    
+    return float4(colorTrans.rgb, 1);
+    }   
+
+float4 StepMoyen(float3 startPoint, float3 dir_1, float3 dir_2)
+    {
+    int maxStep = 350;
+    const float maxDistanse = 512.0f;
+    const float3 dirStep = normalize(dir_2);
+    
+    float transparensia = 1.0f;
+    float3 colorTrans = float3(0.25f, 0.25f, 1);
+    
+    bool isDetect = false;
+    
+    float3 lumColor = float3(1, 1, 1);
+    float3 posLumSouslo = float3(255, 255, 255);
+    float4 courrColor = float4(0, 0, 1, 1);
+    //float3 courrPosLum = 
+    
+    for (float i = maxStep; i > 1; i--)
+        {
+        float3 courrPos = startPoint + dirStep * i;
+        courrColor = mondeTex[courrPos.xzy];
+        
+        if (!estCorrectIndex(courrPos.xzy, int3(255, 255, 255)))
+            {
+            courrColor = float4(0, 0, 0, 0);
+            }
+        
+        colorTrans = lerp(colorTrans.rgb, courrColor.rgb * (1.0f - i / maxStep), courrColor.a);
+    }
+    
+    return float4(colorTrans.rgb, 1);
+    }
+
 float4 LumMarch(float3 startPoint, float3 dir_1, float3 dir_2, float k)
     {
     int maxStep = 400;
@@ -405,7 +552,7 @@ float4 LumMarch(float3 startPoint, float3 dir_1, float3 dir_2, float k)
 
     float3 courrPos = startPoint + dirStep * k;                             
     float4 courrColor;
-    float intens = 1.0f;
+    float intens = lumIntens * 3.0f;
     float3 tone = lumColor.rgb;
     float3 dirLum = normalize(bias_1.xzy - courrPos.xzy);
     

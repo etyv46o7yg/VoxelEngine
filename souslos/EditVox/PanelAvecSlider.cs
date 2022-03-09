@@ -23,17 +23,11 @@ public class PanelAvecSlider : MonoBehaviour
         slider.onValueChanged.AddListener(delegate { SliderAEteChange(); });
 
         slider.value = defoultPositionSlider;
-        ValChager();
+        ValChager?.Invoke( slider.value );
         SliderAEteChange();
         }
 
-    // Update is called once per frame
-    void Update()
-        {
-
-        }
-
-    void SliderAEteChange()
+    float SliderAEteChange()
         {
         float a = pointDInflection.x;
         float b = pointDInflection.y;
@@ -51,8 +45,10 @@ public class PanelAvecSlider : MonoBehaviour
 
         courrValText.text = val.ToString();
         
-        ValChager();
+        ValChager?.Invoke(val);
+
+        return val;
         }
 
-    public delegate void Changer();
+    public delegate void Changer(float _val);
     }

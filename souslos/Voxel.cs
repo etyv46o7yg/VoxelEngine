@@ -168,7 +168,12 @@ public class Voxel : MonoBehaviour
         //monde.AddEntite(ent, new int3(10, 10, 10));
 
         const int size = 1024, sizeVoxelCount = 256 * 256 * 256;
-        string [] nameMainKernel = new string [] { "CSMain", "Clear", "Experemental", "Changement", "Lumiere", "Multiplie", "BlooreH", "BlooreV", "Lumiere_2", "AddEntite", "Blitz", "Soleil", "BlitzLum" }; // 13 шт, от 0 до 12
+        string [] nameMainKernel = new string [] { "CSMain", "Clear", "Experemental",
+                                                   "Changement", "Lumiere", "Multiplie", 
+                                                   "BlooreH", "BlooreV", "Lumiere_2", 
+                                                   "AddEntite", "Blitz", "Soleil", 
+                                                   "BlitzLum" 
+                                                  }; // 13 шт, от 0 до 12
 
         if (camera == null)
             {
@@ -189,6 +194,21 @@ public class Voxel : MonoBehaviour
 
         idMain = chader.GetKernel(nameMainKernel [0]);
         idClear = chader.GetKernel(nameMainKernel [1]);
+
+        chader.AddDict("Main",   nameMainKernel[0]);
+        chader.AddDict("Clair",  nameMainKernel[1]);
+        chader.AddDict("Exp",    nameMainKernel[2]);
+        chader.AddDict("Change", nameMainKernel[3]);
+        chader.AddDict("Lum",    nameMainKernel[4]);
+        chader.AddDict("Mul",    nameMainKernel[5]);
+        chader.AddDict("BlurH",  nameMainKernel[6]);
+        chader.AddDict("BlurV",  nameMainKernel[7]);
+        chader.AddDict("Lum_2",  nameMainKernel[8]);
+        chader.AddDict("Add",    nameMainKernel[9]);
+        chader.AddDict("Blitz",  nameMainKernel[10]);
+        chader.AddDict("Sol",    nameMainKernel[11]);
+        chader.AddDict("MulSol", nameMainKernel[12]);
+
         idKernel.Add("Main",   idMain );
         idKernel.Add("Clear",  idClear);
         idKernel.Add("Exp",    chader.GetKernel(nameMainKernel [2]));

@@ -2,6 +2,7 @@
 using System.Collections;
 using System.Collections.Generic;
 using UnityEngine;
+using static FileBreauser.FileMonteur;
 
 /// <summary>
 /// класс главного меню
@@ -9,6 +10,9 @@ using UnityEngine;
 public class PrinceMenadger : MonoBehaviour
     {
     public static PrinceMenadger instance = null;
+    public MenedgerRouts menedger; 
+    public FileBreauser.FileMonteur fileMonteur;
+    public readonly string expantionFileFormat = ".tempete";
 
     /// <summary>
     /// путь к папке, где лежат файлы сохранения
@@ -27,13 +31,14 @@ public class PrinceMenadger : MonoBehaviour
             }
 
         routAFolderFiles = Application.dataPath;
+        menedger.princeMenadger = this;
         }
 
     // Start is called before the first frame update
     void Start()
         {
-        
-        
+        fileMonteur.onFileOuvert +=LoadFile;
+        fileMonteur.onFileSauver +=FileAEteSauver;
         }
 
     // Update is called once per frame
@@ -44,15 +49,36 @@ public class PrinceMenadger : MonoBehaviour
 
     public void LoadFile(string _rout)
         {
-
+        Debug.Log("загружаю файл " + _rout);
+        menedger.render.LoadMonde(_rout);
         }
 
     /// <summary>
-    /// открыть окно
+    /// открыть окно выбора файла
     /// </summary>
-    void OuvertFenetre()
+    public void OuvertFenetreSelectFilePourLoad()
         {
+        if (fileMonteur.regime == RegimeDialogFileBrouser.Noactif)
+            {
+            fileMonteur.gameObject.SetActive(true);
+            fileMonteur.SetFilterExtentions(new List<string> { expantionFileFormat });
+            fileMonteur.SetRegime(RegimeDialogFileBrouser.Ouvert, "");
+            }
+        }
 
+    public void OuvertFenetreSelectFilePourSauver()
+        {
+        if (fileMonteur.regime == RegimeDialogFileBrouser.Noactif)
+            {
+            fileMonteur.gameObject.SetActive(true);
+            fileMonteur.SetFilterExtentions(new List<string> { expantionFileFormat });
+            fileMonteur.SetRegime(RegimeDialogFileBrouser.Sauver, expantionFileFormat);
+            }
+        }
+
+    void FileAEteSauver(string nom)
+        {
+        menedger.render.SauverMondeAFile(nom + expantionFileFormat);
         }
 
 

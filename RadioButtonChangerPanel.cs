@@ -7,6 +7,8 @@ public class RadioButtonChangerPanel : MonoBehaviour
     {
     public Toggle[] toggles;
     public List<GameObject> panels;
+    public delegate int ChagerPanel(int nombreux);
+    public event ChagerPanel PanelAEteChanhe;
     // Start is called before the first frame update
     void Start()
         {
@@ -37,6 +39,9 @@ public class RadioButtonChangerPanel : MonoBehaviour
             }
 
         ShowPanel(numero);
+
+        PanelAEteChanhe?.Invoke(numero);
+
         }
 
     void ShowPanel(int _count)

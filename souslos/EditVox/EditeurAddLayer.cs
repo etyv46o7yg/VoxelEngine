@@ -2,23 +2,29 @@
 using System.Collections.Generic;
 using UnityEngine;
 
-public class LayerEditeur : MonoBehaviour
+public class EditeurAddLayer : MonoBehaviour
     {
     public PanelAvecSlider bas, haut;
     // Start is called before the first frame update
-    void Start()
+    void Awake()
         {
-        bas.ValChager  += FaireZero;
-        haut.ValChager += FaireZero;
+        bas.ValChager  += FaireQuelque;
+        haut.ValChager += FaireQuelque;
         }
 
     // Update is called once per frame
-    void Update()
+
+    public void DrawLevel()
         {
-        
+
         }
 
     public void FaireZero()
+        {
+
+        }
+
+    public void FaireQuelque(float _param)
         {
 
         }

@@ -8,6 +8,8 @@ using UnityEngine.UI;
 
 public class EditorPrince : MonoBehaviour
     {
+    public MenedgerRouts menedgerRouts;
+
     public static EditorPrince instance = null;
     public RawImage mainImageEditor;
     public PanelAvecSlider   sliderAlfa, sliderSizeBrush, slideDureteBrush;
@@ -18,11 +20,6 @@ public class EditorPrince : MonoBehaviour
     public Minimal_Render render;
 
     public Vector2 scale2Da3D;
-
-    #region
-    public Vector3 minPosPaint = Vector3.positiveInfinity, maxPosPaint = Vector3.negativeInfinity;
-    Coroutine calculeMinMaxPosDurantPaintir;
-    #endregion
 
     public GraphicRaycaster m_Raycaster;
     PointerEventData m_PointerEventData;
@@ -40,7 +37,7 @@ public class EditorPrince : MonoBehaviour
     [Range(0, 1)]
     public float f;
 
-    Predicatus pred;
+    public Predicatus predicatusContirDraw;
     public bool estScreen = true, estGlobal = true, estAdd = true;
 
     private void Awake()
@@ -58,16 +55,13 @@ public class EditorPrince : MonoBehaviour
         // Start is called before the first frame update
     void Start()
         {
-        pred = new Predicatus();
+        predicatusContirDraw = new Predicatus();
 
         toggleContin.      onValueChanged.AddListener( delegate { ChangerToggleContiniusMode (toggleContin      ); } );
         toggleScreenGlobal.onValueChanged.AddListener( delegate { ChangerScreenWorld         (toggleScreenGlobal); } );
         toggleEstAdd.      onValueChanged.AddListener( delegate { ChangerEstAdd              (toggleEstAdd      ); } );
         
         toggleContin.isOn       = false;
-        toggleContin.isOn       = true;
-        toggleContin.isOn       = false;
-
         toggleScreenGlobal.isOn = false;
         toggleEstAdd.isOn       = true;
 
@@ -81,10 +75,8 @@ public class EditorPrince : MonoBehaviour
 
         undoRedo   = new UndoRedo<SauverMonde>(5);
         undoRedo_2 = new UndoRedo<PieceDeMonde>(50);
-
-        minPosPaint = Vector3.positiveInfinity;
-        maxPosPaint = Vector3.negativeInfinity;
         
+        menedgerRouts.directionPaint.VectorAEteChanger += ChanderVectorDirPaint;
         }
 
     // Использовать только для обработки непрерывных кликов!
@@ -93,7 +85,7 @@ public class EditorPrince : MonoBehaviour
         Vector2 moucePos = new Vector2(Input.mousePosition.x, Input.mousePosition.y);
 
 
-        if ( pred.GetValue() )
+        if ( Input.GetMouseButtonDown(0) )
             {
             var res = uiRayCast.RayCast( moucePos);
             foreach (var item in res)
@@ -108,20 +100,6 @@ public class EditorPrince : MonoBehaviour
 
             }
 
-        if (Input.GetMouseButtonUp(0))
-            {
-            Vector3 radVec = new Vector3(sliderSizeBrush.val, sliderSizeBrush.val, sliderSizeBrush.val);
-            minPosPaint -= radVec;
-            maxPosPaint += radVec;
-
-            //Debug.Log(minPosPaint.ToString() + " " + maxPosPaint.ToString() );
-
-            render.DrawBox( minPosPaint, maxPosPaint, pollitra.Color_1 );
-
-            minPosPaint = Vector3.positiveInfinity;
-            maxPosPaint = Vector3.negativeInfinity;
-            }
-
         }
 
 
@@ -134,7 +112,10 @@ public class EditorPrince : MonoBehaviour
         RectTransform rect = renderImage.rectTransform;
         Vector2 localPos =  imageClique.GetLocalUICoordinates_2(_worlsPosCursor);
 
-        render.Draw(localPos, pollitra.Color_1, sliderSizeBrush.val, slideDureteBrush.val, estScreen, estAdd);
+        if (instance.predicatusContirDraw.GetValue())
+            {
+            render.Draw(localPos, pollitra.Color_1, sliderSizeBrush.val, slideDureteBrush.val, estScreen, estAdd);
+            }
         //AltRayTraceTexture(render.gameObject.transform.position, dir, 500);
         }
 
@@ -152,6 +133,12 @@ public class EditorPrince : MonoBehaviour
         sliceTex = (Texture2D) mainImageEditor.texture;
 
         scale2Da3D = mainImageEditor.rectTransform.sizeDelta / new Vector2(_tex.width, _tex.height);
+        }
+
+    void ChanderVectorDirPaint(Vector3 _dir)
+        {
+        Debug.Log("измеяю направение рисования " + _dir);
+        render.ChangerDirection(_dir);
         }
 
     Texture2D GetSlice(Texture3D _tex, int slice)
@@ -259,11 +246,11 @@ public class EditorPrince : MonoBehaviour
 
         if (!_toggle.isOn)
             {
-            pred.condition = Predicatus.Condition.GetKey;
+            predicatusContirDraw.condition = Predicatus.Condition.GetKey;
             }
         else
             {
-            pred.condition = Predicatus.Condition.GetKeyDonw;
+            predicatusContirDraw.condition = Predicatus.Condition.GetKeyDonw;
             }  
         
         _toggle.gameObject.GetComponentInChildren<TextToggle>().Toggle();            
@@ -281,12 +268,12 @@ public class EditorPrince : MonoBehaviour
         _toggle.gameObject.GetComponentInChildren<TextToggle>().Toggle();
         }
     
-    public void MonHandler()
+    public void MonHandler(float _param)
         {
 
         }
 
-    void AlphaChanger()
+    void AlphaChanger( float _param)
         {
         pollitra.Color_1.a = sliderAlfa.val;
         }
@@ -301,6 +288,11 @@ public class Predicatus
         }
 
     public Condition condition = Condition.GetKey;
+
+    /// <summary>
+    /// Получить значение
+    /// </summary>
+    /// <returns></returns>
     public bool GetValue()
         {
         switch (condition)

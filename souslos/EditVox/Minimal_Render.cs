@@ -21,6 +21,7 @@ namespace Render
         public RenderTexture RayMap, RayMap_2, mondePosTex, lod_1;
         public Monde monde;
         public Texture2D mapHight, tex_1;
+        public MenedgerRouts menedgerRouts;
 
         string [] nomKernel;
         //Dictionary<string, int> dictKernel;
@@ -45,60 +46,86 @@ namespace Render
 
         CliqueImageRender handlerClique;
 
-        Vector4[] colorSave, cartupedMonde;
+        Vector4[] colorSave;
         ComputeBuffer bufferTextureSave, bufferGeneralInfo;               
 
         string dataRoutSauveData;
-        void Start()
+        void Awake()
             {               
             Application.targetFrameRate = 30;
+            QualitySettings.vSyncCount  = 0;
             dataRoutSauveData = Application.dataPath + "/monde.sav";            
+            menedgerRouts.render = this;                  
 
-            monde = new Monde(sizeMonde, sizeMonde, 256);  //невероятно, это работает!
-                                                           //monde.GenerateMapFromTexture(mapHight, new Color(1, 1, 1, 0.005f));
-            monde.CreerVideMonde(new Color(0, 0, 0, 0));
-            monde.CreerTerre(Color.white, 5);
-            monde.AddSphere(new Vector3(100, 100, 40), 30, new Color(1, 0, 0, 0.01f));
-            monde.AddSphere(new Vector3(180, 100, 50), 30, new Color(1, 0, 1, 0.01f));
-            monde.AddBox(new int3(200, 200, 0), new int3(10, 25, 50), Color.white);
-            //monde = Monde.LoadMonde("мир_1");
+            PrepareMonde();
 
             colorSave     = new Vector4[monde.sizeMonde];
-            cartupedMonde = new Vector4[monde.sizeMonde];
+            
+            PrepareShader();
+            //LoadMonde(PrinceMenadger.instance.routAFolderFiles + "/monde.sav");
 
-            string [] nomKernel = new string [] 
-                                            { 
-                                            "CSMain", "Prepare", "PaintLocal", "PaintGlobal", 
-                                            "BlitzMondeALum", "Lumiere_1", "Clear", 
+            mainEcrane.GetComponent<CanvasImageClique>().AFinirClique += AEtePaintir;
+
+            handlerClique = mainEcrane.GetComponent<CliqueImageRender>();
+            handlerClique.FinirPaint += AEtePaintir_2;
+            handlerClique.CommorcerPaint += PaintCommonce;
+
+
+            AEtePaintir(Vector3.zero, Vector3.zero);
+
+            posMouse3D = new CoursorInfo3D(Vector3.zero);
+            posMouse3D.isCorrectPose = false;
+            posMouse3D.isHaseInfo    = false;
+            }
+
+        void PrepareMonde()
+            {
+            monde = new Monde(sizeMonde, sizeMonde, 256);
+            //monde.GenerateMapFromTexture(mapHight, new Color(1, 1, 1, 0.005f)); //new Monde(sizeMonde, sizeMonde, 256);
+            monde.CreerVideMonde(new Color(0, 0, 0, 0));
+            monde.CreerTerre(Color.white, 5);
+            //monde.AddSphere(new Vector3(100, 100, 40), 30, new Color(1, 0, 0, 0.01f));
+            //monde.AddSphere(new Vector3(180, 100, 50), 30, new Color(1, 0, 1, 0.01f));
+            monde.AddBox(new int3(200, 200, 0), new int3(10, 25, 50), Color.white);
+            }
+
+        void PrepareShader()
+            {
+            string [] nomKernel = new string []
+                                            {
+                                            "CSMain", "Prepare", "PaintLocal", "PaintGlobal",
+                                            "BlitzMondeALum", "Lumiere_1", "Clear",
                                             "Lumiere_3", "BlitzLum_1", "AddBox", "Sauver", "Load",
                                             "PaintColorierGlobal",
-                                            "Sauver_Piece", "Load_Piece"
+                                            "Sauver_Piece", "Load_Piece", "MinMain", "MoyenMain"
                                             };
             chader = new ChaderSysteme("MinimRenderShader", nomKernel);
             //dictKernel = new Dictionary<string, int>();
-            chader.AddDict("Main",     nomKernel [0] );
-            chader.AddDict("Prep",     nomKernel [1] );
-            chader.AddDict("PaintScr", nomKernel [2] );
-            chader.AddDict("PaintWrl", nomKernel [3] );
-            chader.AddDict("BlizLum",  nomKernel [4] );
-            chader.AddDict("Lum_1",    nomKernel [5] );
-            chader.AddDict("Clair",    nomKernel [6] );
-            chader.AddDict("Lum_3",    nomKernel [7] );
-            chader.AddDict("LOD_1",    nomKernel [8] );
-            chader.AddDict("AdBox",    nomKernel [9] );
-            chader.AddDict("Save",     nomKernel [10]);
-            chader.AddDict("Load",     nomKernel [11]);
-            chader.AddDict("PCG",      nomKernel [12]);
-            chader.AddDict("SaveP",    nomKernel [13]);
-            chader.AddDict("LoadP",    nomKernel [14]);
+            chader.AddDict("Main", nomKernel [0]);
+            chader.AddDict("Prep", nomKernel [1]);
+            chader.AddDict("PaintScr", nomKernel [2]);
+            chader.AddDict("PaintWrl", nomKernel [3]);
+            chader.AddDict("BlizLum", nomKernel [4]);
+            chader.AddDict("Lum_1", nomKernel [5]);
+            chader.AddDict("Clair", nomKernel [6]);
+            chader.AddDict("Lum_3", nomKernel [7]);
+            chader.AddDict("LOD_1", nomKernel [8]);
+            chader.AddDict("AdBox", nomKernel [9]);
+            chader.AddDict("Save", nomKernel [10]);
+            chader.AddDict("Load", nomKernel [11]);
+            chader.AddDict("PCG", nomKernel [12]);
+            chader.AddDict("SaveP", nomKernel [13]);
+            chader.AddDict("LoadP", nomKernel [14]);
+            chader.AddDict("SMain", nomKernel [15]);
+            chader.AddDict("MMain", nomKernel [16]);
 
             RenderTexture mainTex = ChaderSysteme.GetRT(1024, 1024);
 
-            rt3d        = ChaderSysteme.GetRt3D(sizeMonde, sizeMonde, 256);
-            tempTex     = ChaderSysteme.GetRt3D(sizeMonde, sizeMonde, 256);
+            rt3d = ChaderSysteme.GetRt3D(sizeMonde, sizeMonde, 256);
+            tempTex = ChaderSysteme.GetRt3D(sizeMonde, sizeMonde, 256);
             lumLocTex_1 = ChaderSysteme.GetRt3D(sizeMonde, sizeMonde, 256);
             lumLocTex_2 = ChaderSysteme.GetRt3D(sizeMonde, sizeMonde, 256);
-            lod_1       = ChaderSysteme.GetRt3D(sizeMonde, sizeMonde, 256, RenderTextureFormat.ARGBFloat);
+            lod_1 = ChaderSysteme.GetRt3D(sizeMonde, sizeMonde, 256, RenderTextureFormat.ARGBFloat);
             mondePosTex = ChaderSysteme.GetRT(1024, 1024, RenderTextureFormat.ARGBFloat);
 
             bufferTextureSave = new ComputeBuffer(colorSave.Length, 16);
@@ -125,22 +152,7 @@ namespace Render
 
             chader.Dispatch("Prep", 32, 32, 32);
             chader.Dispatch("Clair", 32, 32, 32);
-
-            mainEcrane.GetComponent<CanvasImageClique>().AFinirClique += AEtePaintir;
-
-            handlerClique = mainEcrane.GetComponent<CliqueImageRender>();
-            handlerClique.FinirPaint += AEtePaintir_2;
-            handlerClique.CommorcerPaint += PaintCommonce;
-
-
-            AEtePaintir(Vector3.zero, Vector3.zero);
-
-            posMouse3D = new CoursorInfo3D(Vector3.zero);
-            posMouse3D.isCorrectPose = false;
-            posMouse3D.isHaseInfo    = false;
             }
-
-
 
         // Update is called once per frame
         void Update()
@@ -156,28 +168,24 @@ namespace Render
             chader.shader.SetVector("bias_1", bias_1);
             chader.shader.SetVector("ombreColor", ombreColor);
 
+            RenderMetters settings = new RenderMetters();
+            settings = menedgerRouts.fenetreSettingsRender.metters;
 
-            chader.Dispatch("Lum_1", 32, 32, 20);
-
-            if (est_1)
-                {
-                chader.Dispatch("Lum_3", 32, 32, 32);
-                chader.Dispatch("LOD_1", 32, 32, 32);
-                }
-
-            chader.Dispatch("Main");
+            RenderCycle(settings);
 
             if (Input.GetKeyDown(KeyCode.P))
                 {
                 Debug.Log("схороняю");
-                SauverMondeAFile( PrinceMenadger.instance.routAFolderFiles + "/monde.sav" );
+                SauverMondeAFile( PrinceMenadger.instance.routAFolderFiles + "/jope" + PrinceMenadger.instance.expantionFileFormat );
                 }
 
             if (Input.GetKeyDown(KeyCode.L))
                 {
                 Debug.Log("ЗООгружаю");
-                LoadMonde( PrinceMenadger.instance.routAFolderFiles + "/monde.sav" );
+                LoadMonde( PrinceMenadger.instance.routAFolderFiles + "/jope" + PrinceMenadger.instance.expantionFileFormat );
                 }
+
+            #if UNITY_EDITOR          
 
             if (Input.GetKey(KeyCode.LeftShift) && Input.GetKeyDown(KeyCode.B) )
                 {
@@ -195,12 +203,62 @@ namespace Render
                 
                 }
 
-            if (Input.GetKeyDown(KeyCode.X))
+            #else
+
+            if (Input.GetKey(KeyCode.LeftControl) && Input.GetKeyDown(KeyCode.Z) )
                 {
-                chader.Dispatch("Clair", 32, 32, 32);
-                Debug.Log("копирую буферную текстуру");
+                try
+                    {
+                    //LoadMonde( EditorPrince.instance.undoRedo.Undo() );
+                    LoadPieceMonde(EditorPrince.instance.undoRedo_2.Undo() );
+                    }
+                catch (Exception ex)
+                    {
+                    Debug.Log("откат, ошибка " + ex.Message);
+                    throw;
+                    }                                  
+                
                 }
-                          
+
+            #endif
+
+            }
+
+        private void RenderCycle( RenderMetters set )
+            {
+            if (set.prefereFSP <= 1)
+                {
+                return;
+                }
+            else
+                {
+                Application.targetFrameRate = set.prefereFSP;
+                }
+
+            if (set.complexite == RenderMetters.Complexite.Simple)
+                {
+                chader.Dispatch("SMain");
+                }
+
+            if (set.complexite == RenderMetters.Complexite.Moyen)
+                {
+                chader.Dispatch("MMain");
+                }
+
+            if (set.complexite == RenderMetters.Complexite.Compose)
+                {
+                chader.shader.SetFloat("lumIntens", set.luminosite);
+
+                chader.Dispatch("Lum_1", 32, 32, 20);
+
+                if (est_1)
+                    {
+                    chader.Dispatch("Lum_3", 32, 32, 32);
+                    chader.Dispatch("LOD_1", 32, 32, 32);
+                    }
+
+                chader.Dispatch("Main");
+                }
             }
 
         public CoursorInfo3D GetPosMouse3d(Vector3 pos)
@@ -218,6 +276,11 @@ namespace Render
             {
             monde.texture.Apply();
             chader.SetTexture(monde.texture, "Input");
+            }
+
+        public void ChangerDirection(Vector3 dir)
+            {
+            chader.shader.SetVector("vectorDirPaint", dir);
             }
 
         /// <summary>
@@ -276,9 +339,12 @@ namespace Render
         /// </summary>
         public void SauverMondeAFile(string _rout)
             {
-            Vector4[] colors = new Vector4[monde.sizeMonde];           
+            ComputeBuffer buffer = new ComputeBuffer(colorSave.Length, 16);
+            chader.SetBufferPourToutKernels(buffer, "buffSave");
+
+            Vector4 [] colors = new Vector4[monde.sizeMonde];           
             chader.Dispatch("Save", 32, 32, 32);
-            bufferTextureSave.GetData(colors);
+            buffer.GetData(colors);
             SauverMonde mondeS = new SauverMonde(colors);
             BinaryFormatter bf = new BinaryFormatter();
             FileStream fs = new FileStream(_rout, FileMode.OpenOrCreate);
@@ -287,6 +353,7 @@ namespace Render
             fs.Close();
 
             bufferTextureSave.Dispose();
+            buffer.Dispose();
 
             _ = colors;
             /*
@@ -428,11 +495,10 @@ namespace Render
             buff.Release();
 
             PieceDeMonde mond = new PieceDeMonde(res, (Vector3) minPos, (Vector3) maxPos);
-            Debug.Log( "размер = " + mond.GetSizeInMegaByte() );
             return mond;
             }
 
-        #region
+#region
         /*
         public PieceDeMonde GetPieceDeMonde(int3 _minPos, int3 maxPos)
             {
@@ -466,13 +532,14 @@ namespace Render
             return mond;
             }
         */
-        #endregion
+#endregion
 
 
         void AEtePaintir_2(int3 minPos, int3 maxPos)
             {
             //chader.Dispatch(dictKernel ["Clair"], 32, 32, 32);
             EditorPrince.instance.undoRedo_2.AddAction( GetPieceDeMonde( minPos, maxPos) );
+            Debug.Log("размер = " +  EditorPrince.instance.undoRedo_2.GetSizeMegaByte() );
             }
 
         void PaintCommonce()
